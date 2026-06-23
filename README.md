@@ -244,6 +244,125 @@ Solo ejecución fiable de un contrato.
 
 ---
 
+## 📁 Estructura de carpetas del proyecto
+
+El Mail Watchdog opera sobre un directorio compartido (`/shared/mail`) que actúa como interfaz de entrada y estado del sistema.
+
+```text id="m7k2qv"
+mail-watchdog/
+├── src/
+│   ├── main.py
+│   ├── watcher.py
+│   ├── processor.py
+│   ├── smtp_client.py
+│   ├── retry.py
+│   ├── models.py
+│   ├── config.py
+│   └── utils.py
+│
+├── shared/
+│   └── mail/
+│       ├── pending/
+│       │   ├── mail-12345.json
+│       │   ├── mail-12346.json
+│       │   └── ...
+│       │
+│       ├── processing/
+│       │   └── mail-12345.json   (opcional, estado temporal)
+│       │
+│       ├── failed/
+│       │   ├── mail-12340.json
+│       │   └── ...
+│       │
+│       └── logs/
+│           └── mail.log         (opcional, logs estructurados)
+│
+├── tests/
+│   ├── test_processor.py
+│   ├── test_smtp.py
+│   └── test_retry.py
+│
+├── Dockerfile
+├── requirements.txt
+├── README.md
+└── .env.example
+```
+
+---
+
+## 🧠 Descripción de directorios
+
+### `src/`
+
+Contiene la lógica del servicio watchdog.
+
+* `main.py`: entrypoint del daemon
+* `watcher.py`: polling del filesystem (`/pending`)
+* `processor.py`: orquestación del envío de un mail
+* `smtp_client.py`: wrapper de envío SMTP
+* `retry.py`: lógica de reintentos con backoff
+* `models.py`: estructura del JSON de entrada
+* `config.py`: carga de variables de entorno
+* `utils.py`: helpers (filesystem, parsing, etc.)
+
+---
+
+### `shared/mail/`
+
+Interfaz del sistema con Nova.
+
+#### `pending/`
+
+* Entrada de mensajes de correo
+* Archivos `.json` generados por plugins
+
+#### `processing/` (opcional)
+
+* Estado transitorio mientras se envía
+* Puede omitirse si quieres diseño aún más simple
+
+#### `failed/`
+
+* Mensajes que han fallado definitivamente
+* Útil para debugging y trazabilidad
+
+#### `logs/` (opcional)
+
+* Logs por mail o logs agregados del sistema
+
+---
+
+### `tests/`
+
+Tests unitarios y de integración del watchdog:
+
+* parsing de mensajes
+* simulación SMTP
+* comportamiento de reintentos
+* movimientos de archivos
+
+---
+
+### Archivos raíz
+
+* `Dockerfile`: contenedor del servicio
+* `requirements.txt`: dependencias Python
+* `.env.example`: configuración SMTP y runtime
+* `README.md`: documentación del sistema
+
+---
+
+## 📌 Nota de diseño
+
+Esta estructura está optimizada para:
+
+* ejecución simple en Docker
+* observabilidad basada en filesystem
+* bajo acoplamiento con Nova
+* implementación directa por agente (sin decisiones ambiguas)
+
+---
+
 ## 🧭 Evolución futura (no implementado)
 
 Posibles extensiones:
