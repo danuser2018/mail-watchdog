@@ -28,6 +28,10 @@ Los cambios se agrupan en las siguientes categorías:
   desarrollo asistido con IA.
 - Fichero `CHANGELOG.md` con el formato Keep a Changelog v1.1.0 en castellano.
 - Fichero `README.md` con la descripción del servicio.
+- Implementación del servicio daemon `mail-watchdog` (módulos de configuración, modelos, cliente SMTP, reintentos, procesador y watcher).
+- Pruebas unitarias para la lógica de reintento, cliente SMTP y procesador (`tests/`).
+- Archivo `Dockerfile` para el empaquetado del servicio en contenedor.
+- Configuración de integración continua (CI) en GitHub Actions (`.github/workflows/ci.yml`) para la validación automática en Pull Requests.
 
 ---
 
