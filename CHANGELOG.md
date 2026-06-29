@@ -25,6 +25,10 @@ Los cambios se agrupan en las siguientes categorías:
 
 - Nueva carpeta `.agent/skills` con información relevante para la IA.
 
+### Corregido
+
+- Alineación y corrección de discrepancias de la documentación técnica en `README.md` respecto a la extensión de archivos (`.json`), la obligatoriedad del directorio `processing/`, el cálculo del backoff exponencial (`MAIL_BACKOFF_BASE ** (attempts - 1)`), las variables de entorno `MAIL_SHARED_DIR`/`LOG_LEVEL` y la estructura exacta de logs generados por el daemon.
+
 ## [1.0.0] - 2026-06-27
 
 ### Añadido

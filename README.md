@@ -36,7 +36,7 @@ No interactúa con el usuario ni con el orchestrator directamente.
 El servicio:
 
 * Escucha una carpeta de entrada (`/shared/mail/pending`)
-* Procesa archivos `.msg.json`
+* Procesa archivos `.json`
 * Envía emails mediante SMTP
 * Si el envío fue correcto, borra el mail.
 * Si el envío falló y no hay más reintentos, mueve el mail a `/failed`.
@@ -90,9 +90,10 @@ El Mail Watchdog consume archivos JSON con el siguiente formato:
 ## 🔁 Política de reintentos
 
 * Número de reintentos configurable (ej: 3–5)
-* Backoff exponencial simple recomendado:
-
-  * 1s → 5s → 15s → 30s
+* Backoff exponencial calculado con la fórmula `MAIL_BACKOFF_BASE ** (attempts - 1)` (en segundos). Con los valores por defecto (`MAIL_BACKOFF_BASE=2.0` y `MAIL_MAX_RETRIES=3`):
+  * Reintento 1: 1.0s
+  * Reintento 2: 2.0s
+  * Reintento 3: Límite de reintentos alcanzado (fallo definitivo tras 3 intentos en total)
 * Fallo definitivo tras agotamiento de intentos
 
 ---
@@ -122,6 +123,10 @@ SMTP_FROM="Nova <your_user@gmail.com>"
 MAIL_POLL_INTERVAL=2
 MAIL_MAX_RETRIES=3
 MAIL_BACKOFF_BASE=2
+
+# Directorio compartido para buzones de correo y nivel de logs (opcionales)
+MAIL_SHARED_DIR=/shared/mail
+LOG_LEVEL=INFO
 ```
 
 ---
@@ -185,11 +190,11 @@ El servicio debe registrar:
 Ejemplo de log:
 
 ```text
-[INFO] Processing mail mail-12345
-[INFO] Sending to user@example.com
-[WARN] SMTP retry 1/3
-[ERROR] Mail failed after retries
-[INFO] Moved to /failed/mail-12345.json
+2026-06-30 00:53:40,123 [INFO] processor: Processing mail mail-12345
+2026-06-30 00:53:40,124 [INFO] processor: Sending to user@example.com
+2026-06-30 00:53:41,125 [WARNING] processor: SMTP retry 1/3 failed for ID mail-12345: [SMTP connection error]
+2026-06-30 00:53:43,126 [ERROR] processor: Mail failed after retries
+2026-06-30 00:53:43,127 [INFO] processor: Moved to /shared/mail/failed/mail-12345.json
 ```
 
 ---
@@ -268,7 +273,7 @@ mail-watchdog/
 │       │   └── ...
 │       │
 │       ├── processing/
-│       │   └── mail-12345.json   (opcional, estado temporal)
+│       │   └── mail-12345.json   (estado temporal de procesamiento)
 │       │
 │       ├── failed/
 │       │   ├── mail-12340.json
@@ -316,10 +321,9 @@ Interfaz del sistema con Nova.
 * Entrada de mensajes de correo
 * Archivos `.json` generados por plugins
 
-#### `processing/` (opcional)
+#### `processing/`
 
-* Estado transitorio mientras se envía
-* Puede omitirse si quieres diseño aún más simple
+* Estado transitorio obligatorio mientras se envía (evita duplicados o pérdidas si el proceso se interrumpe)
 
 #### `failed/`
 
