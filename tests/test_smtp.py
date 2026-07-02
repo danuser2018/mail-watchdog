@@ -11,11 +11,12 @@ if str(src_dir) not in sys.path:
 from models import MailMessage
 from smtp_client import SMTPClient
 
+RECIPIENT = "receiver@example.com"
+
 class TestSMTPClient(unittest.TestCase):
     def setUp(self):
         self.message = MailMessage(
             id="mail-test-1",
-            to="receiver@example.com",
             subject="Test Subject",
             body="Test Body",
             content_type="text/plain"
@@ -35,7 +36,7 @@ class TestSMTPClient(unittest.TestCase):
             from_addr="sender@example.com"
         )
         
-        client.send(self.message)
+        client.send(self.message, RECIPIENT)
         
         mock_smtp_class.assert_called_once_with("smtp.example.com", 25, timeout=10)
         mock_server.sendmail.assert_called_once()
@@ -57,7 +58,7 @@ class TestSMTPClient(unittest.TestCase):
             from_addr="sender@example.com"
         )
         
-        client.send(self.message)
+        client.send(self.message, RECIPIENT)
         
         mock_smtp_class.assert_called_once_with("smtp.example.com", 587, timeout=10)
         mock_server.starttls.assert_called_once()
@@ -78,12 +79,34 @@ class TestSMTPClient(unittest.TestCase):
             from_addr="sender@example.com"
         )
         
-        client.send(self.message)
+        client.send(self.message, RECIPIENT)
         
         mock_smtp_ssl_class.assert_called_once_with("smtp.example.com", 465, timeout=10)
         mock_server.login.assert_called_once_with("user@example.com", "secretpassword")
         mock_server.sendmail.assert_called_once()
         mock_server.quit.assert_called_once()
 
+    @patch("smtplib.SMTP")
+    def test_send_uses_explicit_recipient_not_model_field(self, mock_smtp_class):
+        """SMTP sendmail must use the explicitly passed recipient, not any field from the model."""
+        mock_server = MagicMock()
+        mock_smtp_class.return_value = mock_server
+        mock_server.has_extn.return_value = False
+
+        client = SMTPClient(
+            host="smtp.example.com",
+            port=25,
+            user=None,
+            password=None,
+            from_addr="sender@example.com"
+        )
+        explicit_recipient = "dynamic@identity.example.com"
+        client.send(self.message, explicit_recipient)
+
+        # Verify sendmail was called with the explicitly provided recipient
+        call_args = mock_server.sendmail.call_args
+        self.assertEqual(call_args[0][1], [explicit_recipient])
+
 if __name__ == "__main__":
     unittest.main()
+

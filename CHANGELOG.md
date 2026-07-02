@@ -19,11 +19,21 @@ Los cambios se agrupan en las siguientes categorías:
 
 ---
 
-## Sin publicar
+## [1.1.0] - 2026-07-02
 
 ### Añadido
 
 - Nueva carpeta `.agent/skills` con información relevante para la IA.
+- Variable de configuración `identity_service_base_url` cargada desde `IDENTITY_SERVICE_BASE_URL` (por defecto `http://identity-service:8000`) en `src/config.py`.
+- Método privado `_resolve_recipient()` en `MailProcessor` (`src/processor.py`) que consulta `GET /v1/identity/email` en `identity-service` usando `urllib.request` estándar con timeout de 5 segundos.
+- Nuevos tests en `tests/test_processor.py` que cubren los escenarios de fallo de `identity-service` (reintento por backoff, agotamiento de reintentos, email vacío) y compatibilidad con campo `to` legado ignorado por Pydantic.
+- Nuevo test en `tests/test_smtp.py` que verifica que `sendmail` usa el destinatario explícito pasado como argumento.
+
+### Cambiado
+
+- Eliminado el campo obligatorio `to` del modelo `MailMessage` en `src/models.py`. El destinatario ahora se resuelve dinámicamente vía REST desde `identity-service`.
+- Modificada la firma de `SMTPClient.send()` en `src/smtp_client.py` para aceptar el parámetro explícito `recipient: str`, desacoplando el cliente SMTP del modelo de datos.
+- Actualizado `src/processor.py` para resolver el destinatario llamando a `_resolve_recipient()` antes del envío SMTP, tratando los fallos de `identity-service` como fallos temporales sujetos a la política de backoff exponencial.
 
 ### Corregido
 
