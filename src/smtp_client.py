@@ -18,16 +18,17 @@ class SMTPClient:
         self.password = password
         self.from_addr = from_addr or user or "Nova <nova@localhost>"
 
-    def send(self, message: MailMessage):
+    def send(self, message: MailMessage, recipient: str):
         """
         Builds the MIME message and transmits it via SMTP.
         Selects implicit SSL/TLS or explicit STARTTLS based on configuration.
+        recipient: resolved email address obtained from identity-service by the caller (processor.py).
         """
         # Build MIMEMultipart message container
         msg = MIMEMultipart("alternative")
         msg["Subject"] = message.subject
         msg["From"] = self.from_addr
-        msg["To"] = message.to
+        msg["To"] = recipient
 
         # Determine if content_type is HTML or plain text
         subtype = "html" if "html" in message.content_type.lower() else "plain"
@@ -58,9 +59,8 @@ class SMTPClient:
                 server.login(self.user, self.password)
 
             # 3. Transmit the email
-            # We use msg["From"] and msg["To"] but resolve to to-list
-            logger.info(f"Dispatching email ID: {message.id} to recipient: {message.to}")
-            server.sendmail(self.from_addr, [message.to], msg.as_string())
+            logger.info(f"Dispatching email ID: {message.id} to recipient: {recipient}")
+            server.sendmail(self.from_addr, [recipient], msg.as_string())
             logger.info(f"Successfully sent email ID: {message.id}")
 
         except Exception as e:

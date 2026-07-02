@@ -68,6 +68,11 @@ class Config:
         self.processing_dir = self.shared_dir / "processing"
         self.failed_dir = self.shared_dir / "failed"
 
+        # 5. Identity Service Configuration
+        self.identity_service_base_url = os.getenv(
+            "IDENTITY_SERVICE_BASE_URL", "http://identity-service:8000"
+        )
+
         # Initialize folders (best-effort, fall back if /shared/mail is not writable)
         self.init_directories()
 
@@ -106,5 +111,6 @@ class Config:
             f"mail_max_retries={self.mail_max_retries}, "
             f"mail_backoff_base={self.mail_backoff_base}, "
             f"log_level={logging.getLevelName(self.log_level)}, "
-            f"shared_dir={self.shared_dir})"
+            f"shared_dir={self.shared_dir}, "
+            f"identity_service_base_url='{self.identity_service_base_url}')"
         )

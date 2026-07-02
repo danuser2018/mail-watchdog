@@ -4,7 +4,7 @@ import json
 import time
 from pathlib import Path
 import tempfile
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 # Add src directory to Python path
 src_dir = Path(__file__).resolve().parent.parent / "src"
@@ -28,6 +28,7 @@ class MockConfig:
         
         self.mail_max_retries = 3
         self.mail_backoff_base = 2.0
+        self.identity_service_base_url = "http://identity-service:8000"
 
 class TestMailProcessor(unittest.TestCase):
     def setUp(self):
@@ -38,7 +39,6 @@ class TestMailProcessor(unittest.TestCase):
 
         self.valid_mail_data = {
             "id": "mail-12345",
-            "to": "test@example.com",
             "subject": "Hello",
             "body": "World",
             "content_type": "text/plain"
@@ -53,16 +53,19 @@ class TestMailProcessor(unittest.TestCase):
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(self.valid_mail_data, f)
 
-        self.processor.process_file(file_path)
+        with patch.object(self.processor, "_resolve_recipient", return_value="testuser@example.com"):
+            self.processor.process_file(file_path)
 
-        # SMTP client should be called
+        # SMTP client should be called with resolved recipient
         self.mock_smtp.send.assert_called_once()
+        call_args = self.mock_smtp.send.call_args
+        self.assertEqual(call_args[0][1], "testuser@example.com")
         # File should be deleted
         self.assertFalse(file_path.exists())
 
     def test_processing_validation_failure(self):
-        invalid_data = self.valid_mail_data.copy()
-        del invalid_data["to"]  # Missing required field
+        # id is required, subject must have min_length=1
+        invalid_data = {"id": "", "subject": "Hello", "body": "World"}
 
         file_path = self.config.processing_dir / "mail-invalid.msg.json"
         with open(file_path, "w", encoding="utf-8") as f:
@@ -114,8 +117,9 @@ class TestMailProcessor(unittest.TestCase):
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(self.valid_mail_data, f)
 
-        # 1st attempt
-        self.processor.process_file(file_path)
+        with patch.object(self.processor, "_resolve_recipient", return_value="testuser@example.com"):
+            # 1st attempt
+            self.processor.process_file(file_path)
 
         # SMTP called once
         self.mock_smtp.send.assert_called_once()
@@ -141,12 +145,88 @@ class TestMailProcessor(unittest.TestCase):
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(retry_data, f)
 
-        self.processor.process_file(file_path)
+        with patch.object(self.processor, "_resolve_recipient", return_value="testuser@example.com"):
+            self.processor.process_file(file_path)
 
         # File should be removed from processing and moved to failed
         self.assertFalse(file_path.exists())
         failed_file = self.config.failed_dir / "mail-12345.json"
         self.assertTrue(failed_file.exists())
+
+    def test_identity_service_failure_triggers_retry(self):
+        """When identity-service is unreachable, the file must remain and schedule a retry."""
+        file_path = self.config.processing_dir / "mail-idretry.msg.json"
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(self.valid_mail_data, f)
+
+        with patch.object(
+            self.processor, "_resolve_recipient",
+            side_effect=RuntimeError("Network error contacting identity-service")
+        ):
+            self.processor.process_file(file_path)
+
+        # SMTP must not be called
+        self.mock_smtp.send.assert_not_called()
+        # File should still exist with retry scheduled
+        self.assertTrue(file_path.exists())
+        with open(file_path, "r", encoding="utf-8") as f:
+            updated = json.load(f)
+            self.assertEqual(updated["attempts"], 1)
+            self.assertIsNotNone(updated["next_retry_at"])
+
+    def test_identity_service_failure_max_retries_exceeded(self):
+        """When identity-service keeps failing and max retries are exceeded, move to failed/."""
+        retry_data = self.valid_mail_data.copy()
+        retry_data["attempts"] = 2  # next attempt will be 3rd → exceeds max_retries=3
+
+        file_path = self.config.processing_dir / "mail-idmax.msg.json"
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(retry_data, f)
+
+        with patch.object(
+            self.processor, "_resolve_recipient",
+            side_effect=RuntimeError("Network error contacting identity-service")
+        ):
+            self.processor.process_file(file_path)
+
+        # SMTP must not be called
+        self.mock_smtp.send.assert_not_called()
+        self.assertFalse(file_path.exists())
+        failed_file = self.config.failed_dir / "mail-12345.json"
+        self.assertTrue(failed_file.exists())
+
+    def test_identity_service_empty_email_triggers_retry(self):
+        """When identity-service returns an empty email, treat as temporary failure."""
+        file_path = self.config.processing_dir / "mail-emptyemail.msg.json"
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(self.valid_mail_data, f)
+
+        with patch.object(
+            self.processor, "_resolve_recipient",
+            side_effect=RuntimeError("identity-service returned an empty or missing email field")
+        ):
+            self.processor.process_file(file_path)
+
+        self.mock_smtp.send.assert_not_called()
+        self.assertTrue(file_path.exists())
+
+    def test_processing_ignores_extra_to_field_in_json(self):
+        """A JSON file that still contains a legacy 'to' field must be processed normally (field ignored by Pydantic)."""
+        data_with_to = self.valid_mail_data.copy()
+        data_with_to["to"] = "legacy@example.com"
+
+        file_path = self.config.processing_dir / "mail-legacy.msg.json"
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(data_with_to, f)
+
+        with patch.object(self.processor, "_resolve_recipient", return_value="resolved@example.com"):
+            self.processor.process_file(file_path)
+
+        # SMTP must be called with the dynamically resolved recipient, not the legacy one
+        self.mock_smtp.send.assert_called_once()
+        call_args = self.mock_smtp.send.call_args
+        self.assertEqual(call_args[0][1], "resolved@example.com")
+        self.assertFalse(file_path.exists())
 
 if __name__ == "__main__":
     unittest.main()
